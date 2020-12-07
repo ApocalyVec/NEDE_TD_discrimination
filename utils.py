@@ -1,8 +1,12 @@
+import datetime
+import os
+
 import numpy as np
 import matplotlib.pylab as plt
 from tensorflow.python.keras.backend import clear_session
 import tensorflow as tf
 from matplotlib.pyplot import cm
+from tensorflow.python.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.python.keras.layers import CuDNNLSTM, Concatenate
 
 from attention import Attention
@@ -78,44 +82,43 @@ def build_train_cnn(x_train, x_test, y_train, y_test, epochs=250, batch_size=64)
     return history
 
 
-def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, epochs=250, batch_size=64):
+def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
     clear_session()
 
     sequence_input = tf.keras.layers.Input(shape=(x_train.shape[1], x_train.shape[2]))
-    lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(64, return_sequences=True), name="bi_lstm_0")(sequence_input)
+    lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(256, return_sequences=True), name="bi_lstm_0")(sequence_input)
     lstm = tf.keras.layers.Dropout(0.2, name="drop_0")(lstm)
-    # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(64, return_sequences=True), name="bi_lstm_1")(lstm)
+    # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(512, return_sequences=True), name="bi_lstm_1")(lstm)
     # lstm = tf.keras.layers.Dropout(0.2, name="drop_1")(lstm)
-    # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(64, return_sequences=True), name="bi_lstm_2")(lstm)
+    # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(512, return_sequences=True), name="bi_lstm_2")(lstm)
     # lstm = tf.keras.layers.Dropout(0.2, name="drop_2")(lstm)
     (lstm, forward_h, forward_c, backward_h, backward_c) = tf.keras.layers.Bidirectional(
-        tf.keras.layers.LSTM(64, return_sequences=True, return_state=True), name="bi_lstm_1")(lstm)
+        CuDNNLSTM(256, return_sequences=True, return_state=True), name="bi_lstm_1")(lstm)
     state_h = Concatenate()([forward_h, backward_h])
     state_c = Concatenate()([forward_c, backward_c])
     context_vector, attention_weights = Attention(10)(lstm, state_h)
-    dense1 = tf.keras.layers.Dense(128, activation="relu")(context_vector)
+    dense1 = tf.keras.layers.Dense(256, activation="relu")(context_vector)
     dropout = tf.keras.layers.Dropout(0.05)(dense1)
     output = tf.keras.layers.Dense(y_train.shape[1], activation="softmax")(dropout)
 
     classifier = tf.keras.Model(inputs=sequence_input, outputs=output)
     adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
     classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
-    history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size)
 
-    # classifier = tf.keras.Sequential()
-    # classifier.add(tf.keras.layers.Bidirectional(CuDNNLSTM(units=64, return_sequences=True, input_shape=(x_train.shape[1:]), kernel_initializer='random_uniform', kernel_regularizer=tf.keras.regularizers.l2(l=1e-4))))
-    # classifier.add(tf.keras.layers.Dropout(0.2))  # ignore 20% of the neurons in both forward and backward propagation
-    # classifier.add(tf.keras.layers.Bidirectional(CuDNNLSTM(units=64, return_sequences=True, kernel_initializer='random_uniform', kernel_regularizer=tf.keras.regularizers.l2(l=1e-4))))
-    # classifier.add(tf.keras.layers.Dropout(0.2))  # ignore 20% of the neurons in both forward and backward propagation
-    # classifier.add(tf.keras.layers.Bidirectional(CuDNNLSTM(units=64, return_sequences=True, kernel_initializer='random_uniform', kernel_regularizer=tf.keras.regularizers.l2(l=1e-4))))
-    # classifier.add(tf.keras.layers.Dropout(0.2))
-    # classifier.add(tf.keras.layers.Attention())
-    # classifier.add(tf.keras.layers.Dense(units=128, kernel_initializer='random_uniform'))
-    # classifier.add(tf.keras.layers.Dropout(0.2))
-    # classifier.add(tf.keras.layers.Dense(units=y_train.shape[1], activation='softmax', kernel_initializer='random_uniform'))
-    # adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
-    # classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
-    # history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size)
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
+
+    # plot ROC
+    y_score = history.model.predict(x_test)
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
     return history
 
 def plot_train_history(history, note=''):
@@ -293,7 +296,7 @@ def plot_roc_multiclass(n_classes, y_score, y_test, ax=None, zoom=False):
             ax.plot([0, 1], [0, 1], 'k--', lw=lw)
             ax.set_xlabel('False Positive Rate')
             ax.set_ylabel('True Positive Rate')
-            # ax.legend()
+            ax.legend(loc="lower right")
 
         else:
             ax.plot(fpr["micro"], tpr["micro"],
@@ -317,5 +320,5 @@ def plot_roc_multiclass(n_classes, y_score, y_test, ax=None, zoom=False):
             ax.set_ylim([0.0, 1.05])
             ax.set_xlabel('False Positive Rate')
             ax.set_ylabel('True Positive Rate')
-            # ax.legend()
+            ax.legend(loc="lower right")
 

@@ -18,5 +18,5 @@ for cndt in conditions:
         data = dd.read_csv(x_path, header=None).to_records().compute()
 
         print('Dumping pickle')
-        np.save(x_path.replace('.csv', '.p'), data)
-        np.save(y_path.replace('.csv', '.p'), Y)
+        np.save(x_path.replace('.csv', ''), data)
+        np.save(y_path.replace('.csv', ''), Y)
