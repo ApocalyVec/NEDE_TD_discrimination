@@ -78,7 +78,6 @@ def build_train_cnn(x_train, x_test, y_train, y_test, epochs=250, batch_size=64)
     return history
 
 
-
 def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, epochs=250, batch_size=64):
     clear_session()
 

@@ -9,3 +9,6 @@ sklearn
 matplotlib
 torch
 torchvision
+toolz
+dask
+bokeh>=0.13.0
