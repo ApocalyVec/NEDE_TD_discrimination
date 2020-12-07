@@ -1,0 +1,11 @@
+numpy
+tensorflow
+sklearn
+scipy
+opencv-python
+pandas
+scipy
+sklearn
+matplotlib
+torch
+torchvision
