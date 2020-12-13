@@ -8,8 +8,13 @@ import tensorflow as tf
 from matplotlib.pyplot import cm
 from tensorflow.python.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow.python.keras.layers import CuDNNLSTM, Concatenate
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow_addons.layers import ESN
 
 from attention import Attention
+from transformer_test import TransformerBlock
 
 
 def window_slice(data, window_size, stride):
@@ -104,7 +109,74 @@ def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, note='', 
     classifier = tf.keras.Model(inputs=sequence_input, outputs=output)
     adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
     classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
 
+    # plot ROC
+    y_score = history.model.predict(x_test)
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
+    return history
+
+def build_ESN(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
+    clear_session()
+
+    sequence_input = tf.keras.layers.Input(shape=(x_train.shape[1], x_train.shape[2]))
+    x = ESN(units=256)(sequence_input)
+    x = tf.keras.layers.Dense(256, activation="relu")(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+    outputs = layers.Dense(y_train.shape[1], activation="softmax")(x)
+
+    classifier = tf.keras.Model(inputs=sequence_input, outputs=outputs)
+    adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
+    classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
+
+    # plot ROC
+    y_score = history.model.predict(x_test)
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
+    return history
+
+def build_transformer_multiheaded_attention(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
+    clear_session()
+
+    num_heads = 2  # Number of attention heads
+    ff_dim = 32  # Hidden layer size in feed forward network inside transformer
+
+    sequence_input = tf.keras.layers.Input(shape=(x_train.shape[1], x_train.shape[2]))
+    transformer_block = TransformerBlock(x_train.shape[2], num_heads, ff_dim)
+    x = transformer_block(sequence_input)
+    x = layers.GlobalAveragePooling1D()(x)
+    x = layers.Dropout(0.1)(x)
+    x = layers.Dense(20, activation="relu")(x)
+    x = layers.Dropout(0.1)(x)
+    outputs = layers.Dense(2, activation="softmax")(x)
+
+    classifier = tf.keras.Model(inputs=sequence_input, outputs=outputs)
+    adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
+    classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
     es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
     history = classifier.fit(x=x_train, y=y_train, validation_data=(x_test, y_test),
                              epochs=epochs, batch_size=batch_size, callbacks=[es])

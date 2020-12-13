@@ -37,7 +37,7 @@ if __name__ == '__main__':
     freeze_support()
 
     arg_list = [(cndt, sbj, data_root) for cndt in conditions for sbj in subjects]
-    pool = multiprocessing.Pool(16)
+    pool = multiprocessing.Pool(4)
     pool.starmap(re_serialize_npy, arg_list)
     print('All done')
 # for cndt in conditions:
