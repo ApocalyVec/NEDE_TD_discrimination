@@ -32,12 +32,12 @@ def re_serialize_npy(cndt, sbj, data_root):
 if __name__ == '__main__':
     conditions = ['eye', 'free']
     subjects = ['s' + str(i) for i in range(8, 16 - 1)]
-    data_root = '/Users/Leo/Dropbox/data/NEDE_TD_discrimination/Data/'
+    data_root = '/media/apocalyvec/Samsung PSS/'
 
     freeze_support()
 
     arg_list = [(cndt, sbj, data_root) for cndt in conditions for sbj in subjects]
-    pool = multiprocessing.Pool(4)
+    pool = multiprocessing.Pool(16)
     pool.starmap(re_serialize_npy, arg_list)
     print('All done')
 # for cndt in conditions:

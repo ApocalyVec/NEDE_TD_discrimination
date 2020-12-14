@@ -87,23 +87,23 @@ def build_train_cnn(x_train, x_test, y_train, y_test, epochs=250, batch_size=64)
     return history
 
 
-def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
+def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
     clear_session()
 
     sequence_input = tf.keras.layers.Input(shape=(x_train.shape[1], x_train.shape[2]))
-    lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(256, return_sequences=True), name="bi_lstm_0")(sequence_input)
+    lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)), name="bi_lstm_0")(sequence_input)
     lstm = tf.keras.layers.Dropout(0.2, name="drop_0")(lstm)
     # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(512, return_sequences=True), name="bi_lstm_1")(lstm)
     # lstm = tf.keras.layers.Dropout(0.2, name="drop_1")(lstm)
     # lstm = tf.keras.layers.Bidirectional(CuDNNLSTM(512, return_sequences=True), name="bi_lstm_2")(lstm)
     # lstm = tf.keras.layers.Dropout(0.2, name="drop_2")(lstm)
     (lstm, forward_h, forward_c, backward_h, backward_c) = tf.keras.layers.Bidirectional(
-        CuDNNLSTM(256, return_sequences=True, return_state=True), name="bi_lstm_1")(lstm)
+        CuDNNLSTM(128, return_sequences=True, return_state=True), name="bi_lstm_1")(lstm)
     state_h = Concatenate()([forward_h, backward_h])
     state_c = Concatenate()([forward_c, backward_c])
     context_vector, attention_weights = Attention(10)(lstm, state_h)
     dense1 = tf.keras.layers.Dense(256, activation="relu")(context_vector)
-    dropout = tf.keras.layers.Dropout(0.05)(dense1)
+    dropout = tf.keras.layers.Dropout(0.1)(dense1)
     output = tf.keras.layers.Dense(y_train.shape[1], activation="softmax")(dropout)
 
     classifier = tf.keras.Model(inputs=sequence_input, outputs=output)
@@ -125,13 +125,19 @@ def build_train_birnn_with_attention(x_train, x_test, y_train, y_test, note='', 
     ax.legend(loc="lower right")
     plt.show()
 
-    return history
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
 
-def build_ESN(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
+    return history, clsf_rpt
+
+def build_ESN(x_train, x_test, y_train, y_test, encoder, note='', reservoir_units=256, epochs=300, patience=50, batch_size=32):
     clear_session()
 
     sequence_input = tf.keras.layers.Input(shape=(x_train.shape[1], x_train.shape[2]))
-    x = ESN(units=256)(sequence_input)
+    x = ESN(units=reservoir_units)(sequence_input)
     x = tf.keras.layers.Dense(256, activation="relu")(x)
     x = tf.keras.layers.Dropout(0.1)(x)
     outputs = layers.Dense(y_train.shape[1], activation="softmax")(x)
@@ -155,9 +161,15 @@ def build_ESN(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50
     ax.legend(loc="lower right")
     plt.show()
 
-    return history
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
 
-def build_transformer_multiheaded_attention(x_train, x_test, y_train, y_test, note='', epochs=300, patience=50, batch_size=32):
+    return history, clsf_rpt
+
+def build_transformer_multiheaded(x_train, x_test, y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
     clear_session()
 
     num_heads = 2  # Number of attention heads
@@ -191,7 +203,13 @@ def build_transformer_multiheaded_attention(x_train, x_test, y_train, y_test, no
     ax.legend(loc="lower right")
     plt.show()
 
-    return history
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
+
+    return history, clsf_rpt
 
 def plot_train_history(history, note=''):
     plt.plot(history.history['accuracy'])
@@ -253,7 +271,7 @@ def get_img_from_fig(fig, dpi=180):
 
     return img
 
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, classification_report
 from scipy import interp
 from itertools import cycle
 
@@ -393,4 +411,3 @@ def plot_roc_multiclass(n_classes, y_score, y_test, ax=None, zoom=False):
             ax.set_xlabel('False Positive Rate')
             ax.set_ylabel('True Positive Rate')
             ax.legend(loc="lower right")
-
