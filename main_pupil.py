@@ -19,7 +19,7 @@ def encode_y(Y):
     return Y_encoded, encoder
 
 
-conditions = ['free', 'eye']
+conditions = ['free']
 subjects = ['s' + str(i) for i in range(8, 16-1)]
 
 data_root_eeg = '/home/apocalyvec/Dropbox/data/NEDE_TD_discrimination/Data/'
@@ -95,7 +95,7 @@ for cndt in conditions:
         x_event_time_indices_all_eye = np.concatenate([x_event_time_indices_all_eye, x_event_time_indices_eye])
         X_eye = X_eye[:, :, eye_pupil_channels]
         X_all_eye = np.concatenate([X_all_eye, X_eye])
-        pass
+
         # x_train, x_test, y_train, y_test = train_test_split(X, Y_encoded, test_size=0.20, random_state=3, shuffle=True)
 
         # test the BIRNN_attention
@@ -119,7 +119,7 @@ x_train_eye, x_test_eye, y_train, y_test = train_test_split(X_all_eeg, Y_all, te
 model_name_train_callback_dict = {'Multiheaded Transformer': build_transformer_multiheaded,
                                   'Echo State Network': build_ESN,
                                   'BiLSTM with attention': build_train_birnn_with_attention}
-scenario = 'All subjects, All conditions'
+scenario = 'Pupil-only, All subjects, free'
 for model_name, train_callback in model_name_train_callback_dict.items():
     history, clsf_rpt = train_callback(x_train_eye, x_test_eye, y_train, y_test, encoder, note=model_name + ' ' + scenario,
                                        patience=25, )
