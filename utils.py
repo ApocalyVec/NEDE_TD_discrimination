@@ -411,3 +411,153 @@ def plot_roc_multiclass(n_classes, y_score, y_test, ax=None, zoom=False):
             ax.set_xlabel('False Positive Rate')
             ax.set_ylabel('True Positive Rate')
             ax.legend(loc="lower right")
+
+
+def build_ESN_two_input(x_train_1, x_train_2, x_test_1, x_test_2, y_train, y_test, encoder, note='', reservoir_units=256, epochs=300, patience=50, batch_size=32):
+    clear_session()
+
+    sequence_input_1 = tf.keras.layers.Input(shape=(x_train_1.shape[1], x_train_1.shape[2]))
+    x_1 = ESN(units=reservoir_units)(sequence_input_1)
+
+    sequence_input_2 = tf.keras.layers.Input(shape=(x_train_2.shape[1], x_train_2.shape[2]))
+    x_2 = ESN(units=reservoir_units)(sequence_input_2)
+
+    x = tf.keras.layers.concatenate([x_1, x_2])
+    x = tf.keras.layers.Dense(256, activation="relu")(x)
+    x = tf.keras.layers.Dropout(0.1)(x)
+    outputs = layers.Dense(y_train.shape[1], activation="softmax")(x)
+
+    classifier = tf.keras.Model(inputs=[sequence_input_1, sequence_input_2], outputs=outputs)
+    adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
+    classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=[x_train_1, x_train_2], y=y_train, validation_data=([x_test_1, x_test_2], y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
+
+    # plot ROC
+    y_score = history.model.predict([x_test_1, x_test_2])
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
+
+    return history, clsf_rpt
+
+
+def build_transformer_multiheaded_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
+    clear_session()
+
+    num_heads = 2  # Number of attention heads
+    ff_dim = 32  # Hidden layer size in feed forward network inside transformer
+
+    sequence_input_1 = tf.keras.layers.Input(shape=(x_train_1.shape[1], x_train_1.shape[2]))
+    transformer_block_1 = TransformerBlock(x_train_1.shape[2], num_heads, ff_dim)
+    x_1 = transformer_block_1(sequence_input_1)
+    x_1 = layers.GlobalAveragePooling1D()(x_1)
+    x_1 = layers.Dropout(0.1)(x_1)
+
+    sequence_input_2 = tf.keras.layers.Input(shape=(x_train_2.shape[1], x_train_2.shape[2]))
+    transformer_block_2 = TransformerBlock(x_train_2.shape[2], num_heads, ff_dim)
+    x_2 = transformer_block_2(sequence_input_2)
+    x_2 = layers.GlobalAveragePooling1D()(x_2)
+    x_2 = layers.Dropout(0.1)(x_2)
+
+    x = layers.concatenate([x_1, x_2])
+
+    x = layers.Dense(20, activation="relu")(x)
+    x = layers.Dropout(0.1)(x)
+    outputs = layers.Dense(2, activation="softmax")(x)
+
+    classifier = tf.keras.Model(inputs=[sequence_input_1, sequence_input_2], outputs=outputs)
+    adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
+    classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=[x_train_1, x_train_2], y=y_train, validation_data=([x_test_1, x_test_2], y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
+
+    # plot ROC
+    y_score = history.model.predict([x_test_1, x_test_2])
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
+
+    return history, clsf_rpt
+
+
+def build_train_birnn_with_attention_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
+    clear_session()
+
+    sequence_input_1 = tf.keras.layers.Input(shape=(x_train_1.shape[1], x_train_1.shape[2]))
+    lstm_1 = tf.keras.layers.Bidirectional(CuDNNLSTM(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_1)
+    lstm_1 = tf.keras.layers.Dropout(0.2)(lstm_1)
+    (lstm_1, forward_h_1, forward_c_1, backward_h_1, backward_c_1) = tf.keras.layers.Bidirectional(
+        CuDNNLSTM(128, return_sequences=True, return_state=True))(lstm_1)
+    state_h_1 = Concatenate()([forward_h_1, backward_h_1])
+    state_c_1 = Concatenate()([forward_c_1, backward_c_1])
+    context_vector_1, attention_weights_1 = Attention(10)(lstm_1, state_h_1)
+
+
+    sequence_input_2 = tf.keras.layers.Input(shape=(x_train_2.shape[1], x_train_2.shape[2]))
+    lstm_2 = tf.keras.layers.Bidirectional(CuDNNLSTM(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_2)
+    lstm_2 = tf.keras.layers.Dropout(0.2)(lstm_2)
+    (lstm_2, forward_h_2, forward_c_2, backward_h_2, backward_c_2) = tf.keras.layers.Bidirectional(
+        CuDNNLSTM(128, return_sequences=True, return_state=True))(lstm_2)
+    state_h_2 = Concatenate()([forward_h_2, backward_h_2])
+    state_c_2 = Concatenate()([forward_c_2, backward_c_2])
+    context_vector_2, attention_weights_2 = Attention(10)(lstm_2, state_h_2)
+
+    x = layers.concatenate([context_vector_1, context_vector_2])
+
+    dense1 = tf.keras.layers.Dense(256, activation="relu")(x)
+    dropout = tf.keras.layers.Dropout(0.1)(dense1)
+    output = tf.keras.layers.Dense(y_train.shape[1], activation="softmax")(dropout)
+
+    classifier = tf.keras.Model(inputs=[sequence_input_1, sequence_input_2], outputs=output)
+    adam = tf.keras.optimizers.Adam(lr=1e-4, decay=1e-7)
+    classifier.compile(optimizer=adam, loss='categorical_crossentropy', metrics=['accuracy'])
+    classifier.summary()
+    # fit to data
+    es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=patience)
+    history = classifier.fit(x=[x_train_1, x_train_2], y=y_train, validation_data=([x_test_1, x_test_2], y_test),
+                             epochs=epochs, batch_size=batch_size, callbacks=[es])
+    # plot training history
+    plot_train_history(history, note=note)
+
+    # plot ROC
+    y_score = history.model.predict([x_test_1, x_test_2])
+    fig, ax = plt.subplots()
+    plot_roc_multiclass(n_classes=y_train.shape[1], y_score=y_score, y_test=y_test, ax=ax, zoom=False)
+    ax.set_title('ROC for ' + note)
+    ax.legend(loc="lower right")
+    plt.show()
+
+    # obtain classification measures
+    y_test_decoded = np.reshape(encoder.inverse_transform(y_test), newshape=(-1,))
+    y_score_decoded = np.argmax(y_score, axis=1)
+    clsf_rpt = classification_report(y_test_decoded, y_score_decoded, target_names=['Target', 'Distractor'])
+    print(clsf_rpt)
+
+    return history, clsf_rpt

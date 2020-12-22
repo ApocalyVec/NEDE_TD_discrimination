@@ -14,25 +14,25 @@ def print_names(cndt, sbj):
 def re_serialize_npy(cndt, sbj, data_root):
     print('Processing ' + cndt + ' ' + sbj)
     start = time.time()
-    x_path = os.path.join(data_root, 'X_' + sbj + '_' + cndt + '.csv')
-    y_path = os.path.join(data_root, 'y_' + sbj + '_' + cndt + '.csv')
+    data_path = os.path.join(data_root, 'P_data_with_event_' + sbj + '_' + cndt + '.csv')
+    data_time_path = os.path.join(data_root, 'P_time_' + sbj + '_' + cndt + '.csv')
     # reading input data
-    print('Reading ' + y_path + '...')
-    Y = pd.read_csv(y_path, header=None).values
+    print('Reading ' + data_time_path + '...')
+    data_time = pd.read_csv(data_time_path, header=None).values
     print('Dumping pickle')
-    np.save(y_path.replace('.csv', ''), Y)
+    np.save(data_time_path.replace('.csv', ''), data_time)
 
-    print('Reading ' + x_path + ', this might take a while...')
-    data = pd.read_csv(x_path, header=None).values
+    print('Reading ' + data_path + ', this might take a while...')
+    data = pd.read_csv(data_path, header=None).values
     print('Dumping pickle')
-    np.save(x_path.replace('.csv', ''), data)
+    np.save(data_path.replace('.csv', ''), data)
 
     print('Took' + str(time.time() - start))
 
 if __name__ == '__main__':
     conditions = ['eye', 'free']
-    subjects = ['s' + str(i) for i in range(8, 16 - 1)]
-    data_root = '/media/apocalyvec/Samsung PSS/'
+    subjects = ['s' + str(i) for i in range(8, 17)]
+    data_root = '/home/apocalyvec/Dropbox/data/NEDE_TD_discrimination/Pupil_Data'
 
     freeze_support()
 
