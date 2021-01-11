@@ -7,6 +7,7 @@ from utils import build_train_birnn_with_attention, plot_train_history, plot_roc
     build_transformer_multiheaded, build_ESN, build_ESN_two_input, build_transformer_multiheaded_two_input, \
     build_train_birnn_with_attention_two_input
 
+from tensorflow.python.keras import models
 
 def encode_y(Y):
     # one-hot encode integer-valued y in the shape (1, num_samples) or (num_samples, 1)
@@ -19,7 +20,7 @@ def encode_y(Y):
     return Y_encoded, encoder
 
 
-conditions = ['free', 'eye']
+conditions = ['eye']
 subjects = ['s' + str(i) for i in range(8, 16-1)]
 
 data_root_eeg = '/home/apocalyvec/Dropbox/data/NEDE_TD_discrimination/Data/'
@@ -112,21 +113,20 @@ X_all_eye = (X_all_eye - np.min(X_all_eye)) / (np.max(X_all_eye) - np.min(X_all_
 
 Y_all, encoder = encode_y(Y_all)
 x_train_eeg, x_test_eeg, y_train, y_test = train_test_split(X_all_eeg, Y_all, test_size=0.20, random_state=3,
-                                                            shuffle=True)
-x_train_eye, x_test_eye, y_train, y_test = train_test_split(X_all_eeg, Y_all, test_size=0.20, random_state=3,
-                                                            shuffle=True)
-
+                                                            shuffle=True)  # eeg data
+x_train_eye, x_test_eye, y_train, y_test = train_test_split(X_all_eye, Y_all, test_size=0.20, random_state=3,
+                                                            shuffle=True)  # pupil data
 # fit to models
 model_name_train_callback_dict = {
     'BiLSTM with attention': build_train_birnn_with_attention_two_input,
     'Multiheaded Transformer': build_transformer_multiheaded_two_input,
     'Echo State Network': build_ESN_two_input,
 }
-scenario = 'All subjects, All conditions'
+scenario = 'All subjects, eye'
 for model_name, train_callback in model_name_train_callback_dict.items():
     history, clsf_rpt = train_callback(x_train_eeg, x_train_eye, x_test_eeg, x_test_eye, y_train, y_test, encoder,
                                        note=model_name + ' ' + scenario,
-                                       patience=25)
+                                       patience=25, epochs=50)
     scenario_train_histories[model_name + ' ' + scenario] = [history, clsf_rpt]
 
     # # evaluate events
@@ -148,3 +148,35 @@ for model_name, train_callback in model_name_train_callback_dict.items():
     # plt.xlabel('Time before and after TARGET event (sec)')
     # plt.legend(loc='lower right')
     # plt.show()
+
+# visualize the attention weights
+sample_random_index = np.random.randint(0, len(x_test_eeg))
+sample = [x_test_eeg[sample_random_index], x_test_eye[sample_random_index]]
+sample_batch = [np.expand_dims(sample[0], axis=0), np.expand_dims(sample[1], axis=0)]
+sample_label = y_test[sample_random_index]
+
+model = scenario_train_histories['BiLSTM with attention All subjects, eye'][0].model
+
+
+for i in range(1, 2):  # first eeg, then pupil: two inputs
+    l_name = 'attention' if i == 0 else 'attention_' + str(i)
+    attention_layer_output = [l.output for l in model.layers if l.name == l_name][0]
+    attention_model = models.Model(inputs=model.input, outputs=attention_layer_output)
+
+    attention_activation = attention_model.predict(sample_batch)
+    attention_weights = attention_activation[1][0]
+
+    attention_overlay_colormap = np.reshape(np.array([[aw for i in range(200)] for aw in attention_weights]),
+                                            newshape=(len(sample[i]), -1))
+    # plot the attention weights as colormap overlay
+    plt.rcParams["figure.figsize"] = (8, 4)
+    fig, ax1 = plt.subplots()
+    ax1.plot(sample[i][:, 0])
+    ax1.set_xlabel('Time (seconds)')
+    ax1.set_ylabel('Pupil size (mm)')
+    ax2 = ax1.twinx()
+    ax2.imshow(np.transpose(-attention_overlay_colormap), cmap='Greys', alpha=0.6)
+    plt.axis('off')
+    fig.tight_layout()
+    plt.show()
+    break
