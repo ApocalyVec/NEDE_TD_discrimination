@@ -21,10 +21,11 @@ def encode_y(Y):
 
 
 conditions = ['eye']
-subjects = ['s' + str(i) for i in range(8, 16-1)]
+#subjects = ['s' + str(i) for i in range(8, 16-1)]
+subjects = ['s' + str(i) for i in range(8, 11)]
 
-data_root_eeg = '/home/apocalyvec/Dropbox/data/NEDE_TD_discrimination/Data/'
-data_root_eye = '/home/apocalyvec/Dropbox/data/NEDE_TD_discrimination/Pupil_Data/'
+data_root_eeg = '/home/zainkhan/Desktop/Data/'
+data_root_eye = '/home/zainkhan/Desktop/Pupil_Data/'
 
 np.random.seed(42)  # set random seed
 
@@ -112,6 +113,8 @@ X_all_eeg = (X_all_eeg - np.min(X_all_eeg)) / (np.max(X_all_eeg) - np.min(X_all_
 X_all_eye = (X_all_eye - np.min(X_all_eye)) / (np.max(X_all_eye) - np.min(X_all_eye))
 
 Y_all, encoder = encode_y(Y_all)
+print(Y_all)
+np.save('output.npy', Y_all)
 x_train_eeg, x_test_eeg, y_train, y_test = train_test_split(X_all_eeg, Y_all, test_size=0.20, random_state=3,
                                                             shuffle=True)  # eeg data
 x_train_eye, x_test_eye, y_train, y_test = train_test_split(X_all_eye, Y_all, test_size=0.20, random_state=3,
@@ -126,7 +129,7 @@ scenario = 'All subjects, eye'
 for model_name, train_callback in model_name_train_callback_dict.items():
     history, clsf_rpt = train_callback(x_train_eeg, x_train_eye, x_test_eeg, x_test_eye, y_train, y_test, encoder,
                                        note=model_name + ' ' + scenario,
-                                       patience=25, epochs=50)
+                                       patience=25, epochs=2,_use_gpu=True)
     scenario_train_histories[model_name + ' ' + scenario] = [history, clsf_rpt]
 
     # # evaluate events

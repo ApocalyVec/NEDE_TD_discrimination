@@ -413,7 +413,7 @@ def plot_roc_multiclass(n_classes, y_score, y_test, ax=None, zoom=False):
             ax.legend(loc="lower right")
 
 
-def build_ESN_two_input(x_train_1, x_train_2, x_test_1, x_test_2, y_train, y_test, encoder, note='', reservoir_units=256, epochs=300, patience=50, batch_size=32):
+def build_ESN_two_input(x_train_1, x_train_2, x_test_1, x_test_2, y_train, y_test, encoder, note='', reservoir_units=256, epochs=300, patience=50, batch_size=32, _use_gpu=True):
     clear_session()
 
     sequence_input_1 = tf.keras.layers.Input(shape=(x_train_1.shape[1], x_train_1.shape[2]))
@@ -455,7 +455,7 @@ def build_ESN_two_input(x_train_1, x_train_2, x_test_1, x_test_2, y_train, y_tes
     return history, clsf_rpt
 
 
-def build_transformer_multiheaded_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
+def build_transformer_multiheaded_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32, _use_gpu=True):
     clear_session()
 
     num_heads = 2  # Number of attention heads
@@ -507,24 +507,25 @@ def build_transformer_multiheaded_two_input(x_train_1, x_train_2, x_test_1, x_te
     return history, clsf_rpt
 
 
-def build_train_birnn_with_attention_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32):
+def build_train_birnn_with_attention_two_input(x_train_1, x_train_2, x_test_1, x_test_2,  y_train, y_test, encoder, note='', epochs=300, patience=50, batch_size=32, _use_gpu=True):
     clear_session()
 
+    lstm_callback = CuDNNLSTM if _use_gpu else tf.keras.layers.LSTM
+
     sequence_input_1 = tf.keras.layers.Input(shape=(x_train_1.shape[1], x_train_1.shape[2]))
-    lstm_1 = tf.keras.layers.Bidirectional(CuDNNLSTM(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_1)
+    lstm_1 = tf.keras.layers.Bidirectional(lstm_callback(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_1)
     lstm_1 = tf.keras.layers.Dropout(0.2)(lstm_1)
     (lstm_1, forward_h_1, forward_c_1, backward_h_1, backward_c_1) = tf.keras.layers.Bidirectional(
-        CuDNNLSTM(128, return_sequences=True, return_state=True))(lstm_1)
+        lstm_callback(128, return_sequences=True, return_state=True))(lstm_1)
     state_h_1 = Concatenate()([forward_h_1, backward_h_1])
     state_c_1 = Concatenate()([forward_c_1, backward_c_1])
     context_vector_1, attention_weights_1 = Attention(10)(lstm_1, state_h_1)
 
-
     sequence_input_2 = tf.keras.layers.Input(shape=(x_train_2.shape[1], x_train_2.shape[2]))
-    lstm_2 = tf.keras.layers.Bidirectional(CuDNNLSTM(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_2)
+    lstm_2 = tf.keras.layers.Bidirectional(lstm_callback(128, return_sequences=True, kernel_regularizer=tf.keras.regularizers.l2(l=1e-4)))(sequence_input_2)
     lstm_2 = tf.keras.layers.Dropout(0.2)(lstm_2)
     (lstm_2, forward_h_2, forward_c_2, backward_h_2, backward_c_2) = tf.keras.layers.Bidirectional(
-        CuDNNLSTM(128, return_sequences=True, return_state=True))(lstm_2)
+        lstm_callback(128, return_sequences=True, return_state=True))(lstm_2)
     state_h_2 = Concatenate()([forward_h_2, backward_h_2])
     state_c_2 = Concatenate()([forward_c_2, backward_c_2])
     context_vector_2, attention_weights_2 = Attention(10)(lstm_2, state_h_2)
