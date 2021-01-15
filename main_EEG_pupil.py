@@ -97,7 +97,12 @@ for cndt in conditions:
         x_event_time_indices_all_eye = np.concatenate([x_event_time_indices_all_eye, x_event_time_indices_eye])
         X_eye = X_eye[:, :, eye_pupil_channels]
         X_all_eye = np.concatenate([X_all_eye, X_eye])
-        pass
+
+        # add the third class for non-event ###################################
+        # pick random indices outside of the sampled event windows
+        eeg_pupil_offset = np.mean([x_event_time_indices_all_eeg[x] - (x_event_time_indices_all_eye[x] * 2048 / 120) for x in range(len(x_event_time_indices_eeg))])# calculate the average pupil eeg offset
+
+
         # x_train, x_test, y_train, y_test = train_test_split(X, Y_encoded, test_size=0.20, random_state=3, shuffle=True)
 
         # test the BIRNN_attention
@@ -161,7 +166,7 @@ sample_label = y_test[sample_random_index]
 model = scenario_train_histories['BiLSTM with attention All subjects, eye'][0].model
 
 
-for i in range(1, 2):  # first eeg, then pupil: two inputs
+for i in range(1):  # first eeg, then pupil: two inputs
     l_name = 'attention' if i == 0 else 'attention_' + str(i)
     attention_layer_output = [l.output for l in model.layers if l.name == l_name][0]
     attention_model = models.Model(inputs=model.input, outputs=attention_layer_output)
@@ -183,3 +188,4 @@ for i in range(1, 2):  # first eeg, then pupil: two inputs
     fig.tight_layout()
     plt.show()
     break
+
