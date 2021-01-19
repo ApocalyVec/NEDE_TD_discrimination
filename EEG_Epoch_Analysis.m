@@ -13,7 +13,7 @@ condition = 'free';
 
 %% Load Data
 % Load all files of each subject/condition combination
-sPath = fullfile('/media/zainkhan/KINGSTON/NiDyN/s16'); % Change this to be your file path
+sPath = fullfile(strcat('/media/zainkhan/KINGSTON/NiDyN/s', int2str(subject_number))); % Change this to be your file path
 files = dir(sPath);
 data = {};
 for file = 1:length(files)
@@ -35,6 +35,20 @@ for i = 1:length(data)
     end
 end
 
+%% Downsample EEG Data
+
+scale = 8; % Factor of 6 change from 2048 Hz to 256 Hz
+eeg_data_down = {};
+eeg_time_down = {};
+for i = 1:length(eeg_data)
+    eeg_data_down{i} = downsample((eeg_data{i})', scale);
+    eeg_data_down{i} = eeg_data_down{i}';
+    eeg_time_down{i} = downsample((eeg_time{i})', scale);
+    eeg_time_down{i} = eeg_time_down{i}';
+end
+
+eeg_srate = eeg_srate / scale;
+
 %% Filter EEG Data from .5-50 Hz - Butterworth Fourth Order
 % This is done to take out AC noise (at 60 Hz in the US) and drifts
 % (anything below .5 Hz) in the data
@@ -45,10 +59,10 @@ end
 % freqz ( bb, aa, 10000, eeg_srate )
 
 eeg_filt = {};
-for i = 1:length(eeg_data)
-    if size(eeg_data{i},1) == num_eeg_chan
+for i = 1:length(eeg_data_down)
+    if size(eeg_data_down{i},1) == num_eeg_chan
         for chan = 1:num_eeg_chan
-            eeg_filt{i}(chan,:) = filtfilt(bb,aa,double(eeg_data{i}(chan,:)));
+            eeg_filt{i}(chan,:) = filtfilt(bb,aa,double(eeg_data_down{i}(chan,:)));
         end
     end
 end
@@ -72,7 +86,7 @@ for i = 1:length(data)
         eeg_w_events{i} = cat(1,eeg_filt{i},zeros(1,length(eeg_filt{i})));
         for unity_ind = 1:length(unity_data{i})
             if unity_data{i}(1,unity_ind) ~= 0
-                [~,eeg_ind] = min(abs(unity_time{i}(unity_ind) - eeg_time{i}));
+                [~,eeg_ind] = min(abs(unity_time{i}(unity_ind) - eeg_time_down{i}));
                 eeg_w_events{i}(end,eeg_ind) = unity_data{i}(1,unity_ind);
             end
         end
@@ -100,16 +114,16 @@ eeg_events = eeg_events_all(2:65,:); % we recorded only 64 channels of EEG - the
 eeg_events = cat(1,eeg_events,eeg_events_all(end,:)); % we then add event markers as our 65 channel
 
 %% Save the EEG Events + event markers
-csvwrite(sprintf('X_s%i_%s.csv',subject_number,condition), eeg_events);
+csvwrite(sprintf('EEG_s%i_%s.csv',subject_number,condition), eeg_events);
 
 %% Input data into EEGLAB
 eeglab redraw; % if unsure if the EEGLAB GUI is up to date - just type this command in the command line
 EEG = pop_importdata('dataformat','array','nbchan',0,'data','eeg_events','srate',eeg_srate,'pnts',0,'xmin',0); % import data into EEGLAB
 EEG = pop_chanevent(EEG,65,'edge','leading','edgelen',0); % tell EEGLAB which row is the event markers
-EEG = pop_editset(EEG, 'chanlocs', 'E:\NiDyN\Preprocessing Files\biosemi64.sph'); % import location file of all the electrodes - change this to be your file path
+EEG = pop_editset(EEG, 'chanlocs', '/media/zainkhan/KINGSTON/NiDyN/Preprocessing Files/biosemi64.sph'); % import location file of all the electrodes - change this to be your file path
 EEG = eeg_checkset( EEG );
-
-%% Remove the same channels used in ICA analysis - FIX THIS TO BE DONE
+% 
+% %% Remove the same channels used in ICA analysis - FIX THIS TO BE DONE
 % % AUTOMATICALLY
 % % Remind me to explain this in person - it would be too complicated to type
 % % out the whole explanation for this one
@@ -139,11 +153,11 @@ EEG = eeg_checkset( EEG );
 % EEG = pop_epoch( EEG, {  }, [-0.5 1.0], 'epochinfo', 'yes'); % epoch data from -0.5-1s from image onset
 % EEG = pop_rmbase( EEG, [-200    0]); % baseline data from -0.2-0s from image onset
 % EEG = eeg_checkset( EEG );
-% 
-% % Epoch rejection
-% % Here we use different criteria to reject epoch that are outliers from the
-% % norm - I would recommend google each command but they basically mark
-% % outlier epochs based on threshold, probablity and kurtosis
+
+% Epoch rejection
+% Here we use different criteria to reject epoch that are outliers from the
+% norm - I would recommend google each command but they basically mark
+% outlier epochs based on threshold, probablity and kurtosis
 % [EEG, aThresh] = pop_eegthresh(EEG,1,1:EEG.nbchan,-200,200,EEG.xmin, EEG.xmax - 1/EEG.srate,1,0);
 % [EEG, ~, ~, iProb] = pop_jointprob(EEG,1,1:EEG.nbchan,5,5,1,0);
 % [EEG, ~, ~, iKurt] = pop_rejkurt(EEG,1,1:EEG.nbchan,5,5,1,0);
@@ -155,22 +169,25 @@ EEG = eeg_checkset( EEG );
 %{
 % Targets - DO THIS THEN START AGAIN FOR DISTRACTORS
 event_type = 'targets';
-EEG = pop_selectevent( EEG, 'type',1,'renametype','Targets','deleteevents','on','deleteepochs','on','invertepochs','off');
+%EEG = pop_selectevent( EEG, 'type',1,'renametype','Targets','deleteevents','on','deleteepochs','on','invertepochs','off');
+EEG = pop_selectevent( EEG, 'type',1,'deleteevents','on','deleteepochs','on','invertepochs','off');
 EEG.setname='Targets';
 EEG = eeg_checkset( EEG );
 fn = sprintf('s%i_eeg_IO_%s_%s.set',subject_number,condition,event_type);
-EEG = pop_saveset( EEG, 'filename',fn,'filepath','D:\\NiDyN\\NiDyN_Analysis');
+EEG = pop_saveset( EEG, 'filename',fn,'filepath','/media/zainkhan/KINGSTON/NiDyN/Preprocessing Files');
 EEG = eeg_checkset( EEG );
 
 % Distractors
 event_type = 'distractors';
-EEG = pop_selectevent( EEG, 'type',[2:4],'renametype','Distractors','deleteevents','on','deleteepochs','on','invertepochs','off');
+%EEG = pop_selectevent( EEG, 'type',[2:4],'renametype','Distractors','deleteevents','on','deleteepochs','on','invertepochs','off');
+EEG = pop_selectevent( EEG, 'type',[2:4],'deleteevents','on','deleteepochs','on','invertepochs','off');
 EEG.setname='Distractors';
 EEG = eeg_checkset( EEG );
 fn = sprintf('s%i_eeg_IO_%s_%s.set',subject_number,condition,event_type);
-EEG = pop_saveset( EEG, 'filename',fn,'filepath','D:\\NiDyN\\NiDyN_Analysis');
+EEG = pop_saveset( EEG, 'filename',fn,'filepath','/media/zainkhan/KINGSTON/NiDyN/Preprocessing Files');
 EEG = eeg_checkset( EEG );
 %}
+
 %% Separate Epoched Data into Targets and Distractors
 eeg_epoch = EEG.data;
 event = EEG.event;
@@ -179,70 +196,81 @@ for i=1:size(event,2)
 end
 
 %% Save the event types
+
 target_event = event_type == target_category;
-csvwrite(sprintf('y_s%i_%s.csv',subject_number,condition), target_event);
+csvwrite(sprintf('EEG_y_s%i_%s.csv',subject_number,condition), target_event);
+
+%% Concatenate epoched data
+
+eeg_concat = reshape(eeg_epoch, size(eeg_epoch, 1), []);
+
+%% Save data
+
+%csvwrite(sprintf('X_s%i_%s.csv', subject_number, condition), eeg_z); 
 %save(sprintf('y_s%i_%s.mat',subject_number,condition), 'target_event');
 
 %% Shape mismatch at the moment
-eeg_epoch_filt_targ = eeg_epoch(:,:,event_type == target_category);
-eeg_epoch_filt_dist = eeg_epoch(:,:,event_type ~= target_category);
+% eeg_epoch_filt_targ = eeg_epoch(:,:,event_type == target_category);
+% eeg_epoch_filt_dist = eeg_epoch(:,:,event_type ~= target_category);
 
 %% Save Epoched Data for Logistic Regression Analysis
+
 %save(sprintf('s%i_eeg_LR_%s.mat',subject_number,condition),'eeg_epoch_filt_targ','eeg_epoch_filt_dist');
 
 %% Plot Average Data for Cz, Pz, POZ
-x_axis = linspace(-500,1000,size(eeg_epoch_filt_dist, 2));
-% Fz
-figure
-channel = 34; % Remember that this also changes for each subject since we remove different channels for each subject
-Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
-hold on
-Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
-plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
-plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
-plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
-title('Fz')
-xlabel('Time (ms)')
-legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
 
-% Cz
-figure
-channel = 44; % Remember that this also changes for each subject since we remove different channels for each subject
-Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
-hold on
-Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
-plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
-plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
-plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
-title('Cz')
-xlabel('Time (ms)')
-legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
-
-% Pz
-figure
-channel = 27; % Remember that this also changes for each subject since we remove different channels for each subject
-Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
-hold on
-Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
-plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
-plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
-plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
-title('Pz')
-xlabel('Time (ms)')
-legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
-
-% PoZ
-figure
-channel = 28; % Remember that this also changes for each subject since we remove different channels for each subject
-Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
-hold on
-Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
-plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
-plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
-plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
-title('CPz')
-xlabel('Time (ms)')
-legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
+% x_axis = linspace(-500,1000,size(eeg_epoch_filt_dist, 2));
+% % Fz
+% figure
+% channel = 34; % Remember that this also changes for each subject since we remove different channels for each subject
+% Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
+% hold on
+% Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
+% plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
+% plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
+% plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
+% title('Fz')
+% xlabel('Time (ms)')
+% legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
+% 
+% % Cz
+% figure
+% channel = 44; % Remember that this also changes for each subject since we remove different channels for each subject
+% Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
+% hold on
+% Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
+% plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
+% plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
+% plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
+% title('Cz')
+% xlabel('Time (ms)')
+% legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
+% 
+% % Pz
+% figure
+% channel = 27; % Remember that this also changes for each subject since we remove different channels for each subject
+% Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
+% hold on
+% Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
+% plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
+% plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
+% plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
+% title('Pz')
+% xlabel('Time (ms)')
+% legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
+% 
+% % PoZ
+% figure
+% channel = 28; % Remember that this also changes for each subject since we remove different channels for each subject
+% Dist = shadedErrorBar(x_axis,mean(eeg_epoch_filt_dist(channel,:,:),3),std(eeg_epoch_filt_dist(channel,:,:),[],3),'-b',1);
+% hold on
+% Targ = shadedErrorBar(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3),std(eeg_epoch_filt_targ(channel,:,:),[],3),'-r',1);
+% plot(x_axis,median(eeg_epoch_filt_dist(channel,:,:),3),'b.')
+% plot(x_axis,median(eeg_epoch_filt_targ(channel,:,:),3),'r.')
+% plot(x_axis,mean(eeg_epoch_filt_targ(channel,:,:),3)-mean(eeg_epoch_filt_dist(channel,:,:),3),'--k','LineWidth',2)
+% title('CPz')
+% xlabel('Time (ms)')
+% legend([Dist.mainLine, Targ.mainLine], 'distractors', 'targets', 'Location', 'SouthWest')
 
 
 
